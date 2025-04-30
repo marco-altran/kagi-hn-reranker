@@ -57,9 +57,7 @@ python bge_reranker.py
 python sklearn_reranker.py       
 ````
 
-Copy `.env.example` to `.env` and fill with your OpenAI API key.
-
-then run the evaluation:
+Copy `.env.example` to `.env` and fill with your OpenAI API key, then run the evaluation:
 ```commandline
 python eval.py
 ```
