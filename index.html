@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hacker News Bio Reranker</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { color: #ff6600; margin-bottom: 20px; }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+        .container.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; }
+        textarea {
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;
+            min-height: 100px; resize: vertical;
+        }
+        button {
+            background-color: #ff6600; color: white; border: none;
+            padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.3s;
+        }
+        button:hover { background-color: #e65c00; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .results { margin-top: 20px; display: none; }
+        .story-box {
+            background-color: #fff; border-left: 4px solid #ff6600;
+            padding: 15px; margin-bottom: 15px; border-radius: 4px;
+        }
+        .story-title {
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .story-title a {
+            color: #2c3e50;
+            text-decoration: none;
+        }
+        .story-title a:hover {
+            text-decoration: underline;
+        }
+        .story-meta {
+            color: #7f8c8d;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .story-score {
+            display: inline-flex;
+            align-items: center;
+        }
+        .story-score::before {
+            content: "▲";
+            color: #ff6600;
+            margin-right: 5px;
+        }
+        .story-similarity {
+            font-weight: 600;
+        }
+        .loading {
+            display: none; margin-top: 20px; text-align: center; color: #7f8c8d;
+        }
+        .error {
+            color: #e74c3c; background-color: #fadbd8; padding: 10px; border-radius: 4px;
+            margin-top: 15px; display: none;
+        }
+        .init-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9); display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999; font-size: 18px; color: #555;
+        }
+        .init-overlay .spinner {
+            width: 40px; height: 40px; margin-bottom: 15px;
+            border: 4px solid rgba(0,0,0,0.1); border-left-color: #ff6600;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination button {
+            background-color: #f9f9f9;
+            color: #333;
+            border: 1px solid #ddd;
+            padding: 5px 15px;
+            margin: 0 5px;
+        }
+        .pagination button.active {
+            background-color: #ff6600;
+            color: white;
+            border-color: #ff6600;
+        }
+        .pagination button:disabled {
+            background-color: #f9f9f9;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <!-- No initialization overlay needed -->
+
+    <div class="container" id="main-container">
+        <h1>Hacker News Bio Reranker</h1>
+        <p>Enter your bio or interests below to see Hacker News stories ranked by relevance to you.</p>
+
+        <div class="form-group">
+            <label for="bio">Your Bio/Interests:</label>
+            <textarea id="bio" placeholder="Describe your interests, background, or areas of expertise..."></textarea>
+        </div>
+
+        <button id="submit-btn" disabled>Find Relevant Stories</button>
+
+        <div class="loading" id="loading">
+            <p>Fetching and ranking stories...</p>
+        </div>
+
+        <div class="error" id="error-message"></div>
+
+        <div class="results" id="results">
+            <h2>Stories Ranked For You:</h2>
+            <div id="stories-container"></div>
+            <div id="pagination" class="pagination"></div>
+            <div class="stats" id="stats"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_SERVICE_URL = 'https://kagi-hn-reranker-543728486451.us-east4.run.app/rerank';
+        const ITEMS_PER_PAGE = 10;
+
+        const submitBtn = document.getElementById('submit-btn');
+        const bioInput = document.getElementById('bio');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const storiesContainer = document.getElementById('stories-container');
+        const pagination = document.getElementById('pagination');
+        const stats = document.getElementById('stats');
+        const errorMessage = document.getElementById('error-message');
+        const mainContainer = document.getElementById('main-container');
+
+        let allStories = [];
+        let currentPage = 1;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // API is ready immediately, no polling needed
+            submitBtn.disabled = false;
+            bioInput.disabled = false;
+
+            // Setup submit handler
+            submitBtn.addEventListener('click', handleSubmit);
+        });
+
+        function displayStories(page) {
+            const startIndex = (page - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const storiesForPage = allStories.slice(startIndex, endIndex);
+
+            storiesContainer.innerHTML = '';
+
+            if (storiesForPage.length === 0) {
+                const noResults = document.createElement('div');
+                noResults.className = 'no-results';
+                noResults.textContent = 'No stories found matching your interests.';
+                storiesContainer.appendChild(noResults);
+                return;
+            }
+
+            storiesForPage.forEach(story => {
+                const storyBox = document.createElement('div');
+                storyBox.className = 'story-box';
+
+                const title = document.createElement('div');
+                title.className = 'story-title';
+
+                if (story.url) {
+                    const link = document.createElement('a');
+                    link.href = story.url;
+                    link.textContent = story.title;
+                    link.target = '_blank';
+                    title.appendChild(link);
+                } else {
+                    title.textContent = story.title;
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'story-meta';
+
+                const score = document.createElement('span');
+                score.className = 'story-score';
+                score.textContent = story.score || '0';
+
+                const similarity = document.createElement('span');
+                similarity.className = 'story-similarity';
+                similarity.textContent = `Relevance: ${(story.similarity * 100).toFixed(1)}%`;
+
+                meta.appendChild(score);
+                meta.appendChild(similarity);
+
+                storyBox.appendChild(title);
+                storyBox.appendChild(meta);
+                storiesContainer.appendChild(storyBox);
+            });
+
+            // Update pagination
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(allStories.length / ITEMS_PER_PAGE);
+            pagination.innerHTML = '';
+
+            if (totalPages <= 1) return;
+
+            // Previous button
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = '← Prev';
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    displayStories(currentPage);
+                }
+            });
+            pagination.appendChild(prevBtn);
+
+            // Page buttons (show max 5 pages with current page in middle)
+            const maxVisiblePages = 5;
+            const startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.textContent = i;
+                pageBtn.className = i === currentPage ? 'active' : '';
+                pageBtn.addEventListener('click', () => {
+                    currentPage = i;
+                    displayStories(currentPage);
+                });
+                pagination.appendChild(pageBtn);
+            }
+
+            // Next button
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = 'Next →';
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    displayStories(currentPage);
+                }
+            });
+            pagination.appendChild(nextBtn);
+        }
+
+        async function handleSubmit() {
+            const bio = bioInput.value.trim();
+
+            if (!bio) {
+                return showError('Please enter your bio or interests.');
+            }
+
+            // Reset UI
+            errorMessage.style.display = 'none';
+            results.style.display = 'none';
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            currentPage = 1;
+
+            try {
+                const response = await fetch(API_SERVICE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bio })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                }
+
+                allStories = await response.json();
+
+                if (allStories.length === 0) {
+                    stats.textContent = 'No stories found matching your interests.';
+                } else {
+                    stats.textContent = `Found ${allStories.length} stories ranked by relevance to your bio.`;
+                }
+
+                displayStories(currentPage);
+                results.style.display = 'block';
+
+            } catch (err) {
+                showError('Error: ' + err.message);
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

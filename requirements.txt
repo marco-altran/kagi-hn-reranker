@@ -1,0 +1,14 @@
+aiohttp
+certifi
+dotenv
+fastapi
+numpy
+openai
+pydantic
+requests
+scikit-learn
+starlette
+torch
+tqdm
+transformers==4.51.3
+uvicorn
