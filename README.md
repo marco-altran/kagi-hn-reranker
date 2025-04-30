@@ -1,5 +1,9 @@
 # Intro
 
+This is my solution to [Kagi's warm up task](https://hackmd.io/@vprelovac/rJ2G_Tx9T).
+
+The task consists on fetching data from Hacker News for the last 500 stories, and then reranking according to the user bio provided.
+
 I created two rerankers: one that uses a bi-encoder + cosine similarity with sklearn and the other that uses a cross-encoder BGE reranker `bge-reranker-large`
 
 The BGE performs better, but it takes more time and resources. I also created an `eval.py` to compare the two using pairwise with LLM-as-judge evaluation. As expected, BGE had a higher win-rate, albeit the margins were not so big (60% win-rate).
