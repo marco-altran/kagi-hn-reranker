@@ -129,7 +129,8 @@ Two-sided binomial p: 0.0614
 
 # Live Demo
 
-Please check the [live demo](https://marco-altran.github.io/kagi-hn-reranker/). This uses:
+~~Please check the [live demo](https://marco-altran.github.io/kagi-hn-reranker/)~~  *Due to costs, the live demo is no longer available.*
+This uses:
 
 - Google Cloud Platform (GCP) Cloud Run to host the python code.
 - `sklearn_reranker.py` for faster inference on CPU only.
